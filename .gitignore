@@ -2,3 +2,6 @@
 /bin
 /assets/brickadia
 .cache
+.imgui.ini
+imgui.ini
+./imgui.ini
