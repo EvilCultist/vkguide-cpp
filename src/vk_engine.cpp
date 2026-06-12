@@ -1,6 +1,7 @@
 ﻿//> includes
 #include "vk_engine.h"
 #include "VkBootstrap.h"
+#include "fastgltf/types.hpp"
 #include "fmt/core.h"
 
 #include "glm/ext/vector_float4.hpp"
@@ -10,7 +11,10 @@
 
 #include <SDL.h>
 #include <SDL_vulkan.h>
+#include <cstddef>
+#include <cstring>
 #include <iterator>
+#include <ranges>
 #include <vector>
 
 #define VMA_IMPLEMENTATION
@@ -529,6 +533,86 @@ void VulkanEngine::init_imgui() {
     ImGui_ImplVulkan_Shutdown();
     vkDestroyDescriptorPool(_device, imguiPool, nullptr);
   });
+}
+
+AllocatedBuffer VulkanEngine::create_buffer(size_t allocSize,
+                                            VkBufferUsageFlags usage,
+                                            VmaMemoryUsage memoryUsage) {
+  VkBufferCreateInfo buffInfo{};
+  buffInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+  buffInfo.pNext = nullptr;
+  buffInfo.size = allocSize;
+  buffInfo.usage = usage;
+
+  VmaAllocationCreateInfo vmaAllocInfo{};
+  vmaAllocInfo.usage = memoryUsage;
+  vmaAllocInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
+  AllocatedBuffer newBuffer;
+
+  VK_CHECK(vmaCreateBuffer(_allocator, &buffInfo, &vmaAllocInfo,
+                           &newBuffer.buffer, &newBuffer.allocation,
+                           &newBuffer.info));
+
+  return newBuffer;
+}
+
+void VulkanEngine::destroy_buffer(const AllocatedBuffer &buff) {
+  vmaDestroyBuffer(_allocator, buff.buffer, buff.allocation);
+}
+
+GPUMeshBuffers VulkanEngine::uploadMesh(std::span<uint32_t> indices,
+                                        std::span<Vertex> vertices) {
+  const size_t vertexBufferSize = vertices.size() * sizeof(Vertex);
+  const size_t indexBufferSize = indices.size() * sizeof(uint32_t);
+
+  GPUMeshBuffers newSurface;
+  newSurface.vertexBuffer = create_buffer(
+      vertexBufferSize,
+      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+          VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+      VMA_MEMORY_USAGE_GPU_ONLY);
+
+  VkBufferDeviceAddressInfo deviceAdressInfo{
+      .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+      .buffer = newSurface.vertexBuffer.buffer};
+  newSurface.vertexBufferAddress =
+      vkGetBufferDeviceAddress(_device, &deviceAdressInfo);
+
+  newSurface.indexBuffer = create_buffer(indexBufferSize,
+                                         VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
+                                             VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                                         VMA_MEMORY_USAGE_GPU_ONLY);
+
+  AllocatedBuffer staging = create_buffer(vertexBufferSize + indexBufferSize,
+                                          VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                                          VMA_MEMORY_USAGE_CPU_ONLY);
+
+  void *data_buf = staging.allocation->GetMappedData();
+
+  memcpy(data_buf, vertices.data(), vertexBufferSize);
+  memcpy((char *)data_buf + vertexBufferSize, indices.data(), indexBufferSize);
+
+  immediate_submit([&](VkCommandBuffer cmd) {
+    VkBufferCopy vertexCopy{};
+    vertexCopy.dstOffset = 0;
+    vertexCopy.srcOffset = 0;
+    vertexCopy.size = vertexBufferSize;
+
+    vkCmdCopyBuffer(cmd, staging.buffer, newSurface.vertexBuffer.buffer, 1,
+                    &vertexCopy);
+
+    VkBufferCopy indexCopy{};
+    indexCopy.dstOffset = 0;
+    indexCopy.srcOffset = vertexBufferSize;
+    indexCopy.size = indexBufferSize;
+
+    vkCmdCopyBuffer(cmd, staging.buffer, newSurface.indexBuffer.buffer, 1,
+                    &indexCopy);
+  });
+
+  destroy_buffer(staging);
+
+  return newSurface;
 }
 
 void VulkanEngine::draw_background(VkCommandBuffer cmd) {
