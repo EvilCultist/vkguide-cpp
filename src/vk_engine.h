@@ -108,6 +108,9 @@ public:
   VkPipeline _gradientPipeline;
   VkPipelineLayout _gradientPipelineLayout;
 
+  VkPipeline _trianglePipeline;
+  VkPipelineLayout _trianglePipelineLayout;
+
   VkFence _immFence;
   VkCommandBuffer _immCommandBuffer;
   VkCommandPool _immCommandPool;
@@ -141,10 +144,12 @@ private:
   void destroy_swapchain();
 
   void draw_background(VkCommandBuffer cmd);
+  void draw_geometry(VkCommandBuffer cmd);
 
   void init_descriptors();
   void init_pipelines();
   void init_background_pipelines();
+  void init_triangle_pipeline(); // graphics pipeline
 
   void init_imgui();
 
