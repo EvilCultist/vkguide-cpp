@@ -27,5 +27,9 @@ public:
 
   void clear();
 
-  // VkPipeline build_pipeline(VkDevice device);
+  VkPipeline build_pipeline(VkDevice device);
+
+  void set_shaders(VkShaderModule vs, VkShaderModule fs);
+
+  void set_input_topology(VkPrimitiveTopology topology);
 };
