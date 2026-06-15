@@ -78,6 +78,11 @@ private:
   VkPipeline _trianglePipeline;
   VkPipelineLayout _trianglePipelineLayout;
 
+  VkPipeline _meshPipeline;
+  VkPipelineLayout _meshPipelineLayout;
+
+  GPUMeshBuffers rectangle;
+
   VkFence _immFence;
   VkCommandBuffer _immCommandBuffer;
   VkCommandPool _immCommandPool;
@@ -91,11 +96,13 @@ private:
   void init_swapchain();
   void init_commands();
   void init_sync_structures();
+  void init_default_data();
 
   void init_descriptors();
   void init_pipelines();
   void init_background_pipelines();
   void init_triangle_pipeline(); // graphics pipeline
+  void init_mesh_pipeline();
   void init_imgui();
 
   void create_swapchain(uint32_t width, uint32_t height);

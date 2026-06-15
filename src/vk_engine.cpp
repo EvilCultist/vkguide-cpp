@@ -4,6 +4,7 @@
 #include "fastgltf/types.hpp"
 #include "fmt/core.h"
 
+#include "glm/ext/matrix_float4x4.hpp"
 #include "glm/ext/vector_float4.hpp"
 #include "imgui.h"
 #include "imgui_impl_sdl2.h"
@@ -11,6 +12,7 @@
 
 #include <SDL.h>
 #include <SDL_vulkan.h>
+#include <array>
 #include <cstddef>
 #include <cstring>
 #include <iterator>
@@ -64,6 +66,8 @@ void VulkanEngine::init() {
   init_pipelines();
 
   init_imgui();
+
+  init_default_data();
 
   // everything went fine
   _isInitialized = true;
@@ -326,6 +330,61 @@ void VulkanEngine::init_descriptors() {
 void VulkanEngine::init_pipelines() {
   init_background_pipelines();
   init_triangle_pipeline();
+  init_mesh_pipeline();
+}
+
+void VulkanEngine::init_mesh_pipeline() {
+  VkShaderModule triangleFragShader{};
+
+  if (!vkutil::load_shader_module("./shaders/colored_triangle.frag.spv",
+                                  _device, &triangleFragShader)) {
+    fmt::println("Error when building the mesh fragment shader module");
+  } else {
+    fmt::println("Mesh fragment shader succesfully loaded");
+  }
+
+  VkShaderModule triangleVertShader;
+  if (!vkutil::load_shader_module("./shaders/colored_triangle_mesh.vert.spv",
+                                  _device, &triangleVertShader)) {
+    fmt::println("Error when building the mesh vertex shader module");
+  } else {
+    fmt::println("Mesh vertex shader succesfully loaded");
+  }
+
+  VkPushConstantRange bufferRange{};
+  bufferRange.offset = 0;
+  bufferRange.size = sizeof(GPUDrawPushConstants);
+  bufferRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+  VkPipelineLayoutCreateInfo pipeline_layout_info =
+      vkinit::pipeline_layout_create_info();
+  pipeline_layout_info.pPushConstantRanges = &bufferRange;
+  pipeline_layout_info.pushConstantRangeCount = 1;
+
+  VK_CHECK(vkCreatePipelineLayout(_device, &pipeline_layout_info, nullptr,
+                                  &_meshPipelineLayout));
+
+  PipelineBuilder pb;
+  pb._pipelineLayout = _meshPipelineLayout;
+  pb.set_shaders(triangleVertShader, triangleFragShader);
+  pb.set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+  pb.set_polygon_mode(VK_POLYGON_MODE_FILL);
+  pb.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+  pb.set_multisampling_none();
+  pb.disable_blending();
+  pb.disable_depthtest();
+
+  pb.set_color_attachment_format(_drawImage.imageFormat);
+  pb.set_depth_format(VK_FORMAT_UNDEFINED);
+
+  _meshPipeline = pb.build_pipeline(_device);
+  vkDestroyShaderModule(_device, triangleFragShader, nullptr);
+  vkDestroyShaderModule(_device, triangleVertShader, nullptr);
+
+  _mainDeletionQueue.push_function([=, this]() {
+    vkDestroyPipelineLayout(_device, _meshPipelineLayout, nullptr);
+    vkDestroyPipeline(_device, _meshPipeline, nullptr);
+  });
 }
 
 void VulkanEngine::init_triangle_pipeline() {
@@ -454,6 +513,36 @@ void VulkanEngine::init_background_pipelines() {
     vkDestroyPipeline(_device, sky.pipeline, nullptr);
     vkDestroyPipeline(_device, gradient.pipeline, nullptr);
     vkDestroyPipelineLayout(_device, _gradientPipelineLayout, nullptr);
+  });
+}
+
+void VulkanEngine::init_default_data() {
+  std::array<Vertex, 4> rect_vertices;
+  rect_vertices[0].position = {0.5, -0.5, 0};
+  rect_vertices[1].position = {0.5, 0.5, 0};
+  rect_vertices[2].position = {-0.5, -0.5, 0};
+  rect_vertices[3].position = {-0.5, 0.5, 0};
+
+  rect_vertices[0].color = {0, 0, 0, 1};
+  rect_vertices[1].color = {0.5, 0.5, 0.5, 1};
+  rect_vertices[2].color = {1, 0, 0, 1};
+  rect_vertices[3].color = {0, 1, 0, 1};
+
+  std::array<uint32_t, 6> rect_indices;
+
+  rect_indices[0] = 0;
+  rect_indices[1] = 1;
+  rect_indices[2] = 2;
+
+  rect_indices[3] = 2;
+  rect_indices[4] = 1;
+  rect_indices[5] = 3;
+
+  rectangle = uploadMesh(rect_indices, rect_vertices);
+
+  _mainDeletionQueue.push_function([&] {
+    destroy_buffer(rectangle.indexBuffer);
+    destroy_buffer(rectangle.vertexBuffer);
   });
 }
 
@@ -670,6 +759,24 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd) {
   vkCmdSetScissor(cmd, 0, 1, &scissor);
 
   vkCmdDraw(cmd, 3, 1, 0, 0);
+
+  vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshPipeline);
+  // I do not need to reset viewport and scissor, even for a different pipeline,
+  // why?
+  //
+  // vkCmdSetViewport(cmd, 0, 1, &viewport);
+  // vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+  GPUDrawPushConstants pushConstants{};
+  pushConstants.worldMatrix = glm::mat4(1.f);
+  pushConstants.vertexBuffer = rectangle.vertexBufferAddress;
+
+  vkCmdPushConstants(cmd, _meshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0,
+                     sizeof(pushConstants), &pushConstants);
+  vkCmdBindIndexBuffer(cmd, rectangle.indexBuffer.buffer, 0,
+                       VK_INDEX_TYPE_UINT32);
+
+  vkCmdDrawIndexed(cmd, 6, 1, 0, 0, 0);
 
   vkCmdEndRendering(cmd);
 }
