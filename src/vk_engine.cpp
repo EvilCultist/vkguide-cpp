@@ -9,6 +9,7 @@
 #include "imgui.h"
 #include "imgui_impl_sdl2.h"
 #include "imgui_impl_vulkan.h"
+#include "vk_loader.h"
 
 #include <SDL.h>
 #include <SDL_vulkan.h>
@@ -17,6 +18,7 @@
 #include <cstring>
 #include <iterator>
 #include <ranges>
+#include <utility>
 #include <vector>
 
 #define VMA_IMPLEMENTATION
@@ -338,7 +340,7 @@ void VulkanEngine::init_mesh_pipeline() {
 
   if (!vkutil::load_shader_module("./shaders/colored_triangle.frag.spv",
                                   _device, &triangleFragShader)) {
-    fmt::println("Error when building the mesh fragment shader module");
+    fmt::println(stderr, "Error when building the mesh fragment shader module");
   } else {
     fmt::println("Mesh fragment shader succesfully loaded");
   }
@@ -346,7 +348,7 @@ void VulkanEngine::init_mesh_pipeline() {
   VkShaderModule triangleVertShader;
   if (!vkutil::load_shader_module("./shaders/colored_triangle_mesh.vert.spv",
                                   _device, &triangleVertShader)) {
-    fmt::println("Error when building the mesh vertex shader module");
+    fmt::println(stderr, "Error when building the mesh vertex shader module");
   } else {
     fmt::println("Mesh vertex shader succesfully loaded");
   }
@@ -391,7 +393,8 @@ void VulkanEngine::init_triangle_pipeline() {
   VkShaderModule triangleFragShader;
   if (!vkutil::load_shader_module("./shaders/colored_triangle.frag.spv",
                                   _device, &triangleFragShader)) {
-    fmt::println("Error when building the triangle fragment shader module");
+    fmt::println(stderr,
+                 "Error when building the triangle fragment shader module");
   } else {
     fmt::println("Triangle fragment shader succesfully loaded");
   }
@@ -399,7 +402,8 @@ void VulkanEngine::init_triangle_pipeline() {
   VkShaderModule triangleVertShader;
   if (!vkutil::load_shader_module("./shaders/colored_triangle.vert.spv",
                                   _device, &triangleVertShader)) {
-    fmt::println("Error when building the triangle fragment shader module");
+    fmt::println(stderr,
+                 "Error when building the triangle fragment shader module");
   } else {
     fmt::println("Triangle fragment shader succesfully loaded");
   }
@@ -540,9 +544,15 @@ void VulkanEngine::init_default_data() {
 
   rectangle = uploadMesh(rect_indices, rect_vertices);
 
+  testMesh = std::move(loadGltfMeshes(this, "./assets/basicmesh.glb")).value();
+
   _mainDeletionQueue.push_function([&] {
     destroy_buffer(rectangle.indexBuffer);
     destroy_buffer(rectangle.vertexBuffer);
+    for (auto &i : testMesh) {
+      destroy_buffer(i->buffers.vertexBuffer);
+      destroy_buffer(i->buffers.indexBuffer);
+    }
   });
 }
 
@@ -777,6 +787,17 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd) {
                        VK_INDEX_TYPE_UINT32);
 
   vkCmdDrawIndexed(cmd, 6, 1, 0, 0, 0);
+
+  pushConstants.worldMatrix = glm::mat4(1.f);
+  pushConstants.vertexBuffer = testMesh[2]->buffers.vertexBufferAddress;
+
+  vkCmdPushConstants(cmd, _meshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0,
+                     sizeof(pushConstants), &pushConstants);
+  vkCmdBindIndexBuffer(cmd, testMesh[2]->buffers.indexBuffer.buffer, 0,
+                       VK_INDEX_TYPE_UINT32);
+
+  vkCmdDrawIndexed(cmd, testMesh[2]->surfaces[0].count, 1,
+                   testMesh[2]->surfaces[0].startIndex, 0, 0);
 
   vkCmdEndRendering(cmd);
 }

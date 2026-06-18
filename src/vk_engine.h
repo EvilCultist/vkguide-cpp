@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <deque>
 #include <functional>
+#include <memory>
 #include <vector>
 #include <vk_types.h>
 #include <vulkan/vulkan_core.h>
@@ -13,6 +14,7 @@
 #include "VkBootstrap.h"
 #include "glm/ext/vector_float4.hpp"
 #include "vk_descriptors.h"
+#include "vk_loader.h"
 
 constexpr unsigned int FRAME_OVERLAP = 3;
 
@@ -34,6 +36,9 @@ public:
   void run();
 
   void immediate_submit(std::function<void(VkCommandBuffer cmd)> &&function);
+
+  GPUMeshBuffers uploadMesh(std::span<uint32_t> indices,
+                            std::span<Vertex> vertices);
 
 private:
   bool stop_rendering{false};
@@ -92,6 +97,8 @@ private:
   std::vector<ComputeEffect> backgroundEffects;
   int currentBackgroundEffect{0};
 
+  std::vector<std::shared_ptr<MeshAsset>> testMesh;
+
   void init_vulkan();
   void init_swapchain();
   void init_commands();
@@ -111,9 +118,6 @@ private:
   AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage,
                                 VmaMemoryUsage memoryUsage);
   void destroy_buffer(const AllocatedBuffer &buff);
-
-  GPUMeshBuffers uploadMesh(std::span<uint32_t> indices,
-                            std::span<Vertex> vertices);
 
   void draw_background(VkCommandBuffer cmd);
   void draw_geometry(VkCommandBuffer cmd);
