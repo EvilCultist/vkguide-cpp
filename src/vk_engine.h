@@ -72,6 +72,7 @@ private:
   DeletionQueue _mainDeletionQueue;
 
   AllocatedImage _drawImage;
+  AllocatedImage _depthImage;
   VkExtent2D _drawExtent;
 
   VkDescriptorSet _drawImageDescriptors;

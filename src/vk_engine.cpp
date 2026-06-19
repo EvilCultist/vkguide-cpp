@@ -4,8 +4,12 @@
 #include "fastgltf/types.hpp"
 #include "fmt/core.h"
 
+#include "glm/ext/matrix_clip_space.hpp"
 #include "glm/ext/matrix_float4x4.hpp"
+#include "glm/ext/matrix_transform.hpp"
+#include "glm/ext/vector_float3.hpp"
 #include "glm/ext/vector_float4.hpp"
+#include "glm/trigonometric.hpp"
 #include "imgui.h"
 #include "imgui_impl_sdl2.h"
 #include "imgui_impl_vulkan.h"
@@ -175,7 +179,6 @@ void VulkanEngine::init_swapchain() {
       _windowExtent.height,
       1,
   };
-
   _drawImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
   _drawImage.imageExtent = drawImageExtent;
 
@@ -202,7 +205,27 @@ void VulkanEngine::init_swapchain() {
   VK_CHECK(
       vkCreateImageView(_device, &rview_info, nullptr, &_drawImage.imageView));
 
+  _depthImage.imageFormat = VK_FORMAT_D32_SFLOAT;
+  _depthImage.imageExtent = drawImageExtent;
+
+  VkImageUsageFlags depthImageUsages{};
+  depthImageUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+
+  VkImageCreateInfo dimg_info = vkinit::image_create_info(
+      _depthImage.imageFormat, depthImageUsages, _depthImage.imageExtent);
+
+  vmaCreateImage(_allocator, &dimg_info, &rimg_allocinfo, &_depthImage.image,
+                 &_depthImage.allocation, NULL);
+
+  VkImageViewCreateInfo dview_info = vkinit::imageview_create_info(
+      _depthImage.imageFormat, _depthImage.image, VK_IMAGE_ASPECT_DEPTH_BIT);
+
+  VK_CHECK(
+      vkCreateImageView(_device, &dview_info, nullptr, &_depthImage.imageView));
+
   _mainDeletionQueue.push_function([=, this]() {
+    vkDestroyImageView(_device, _depthImage.imageView, nullptr);
+    vmaDestroyImage(_allocator, _depthImage.image, _depthImage.allocation);
     vkDestroyImageView(_device, _drawImage.imageView, nullptr);
     vmaDestroyImage(_allocator, _drawImage.image, _drawImage.allocation);
   });
@@ -374,10 +397,11 @@ void VulkanEngine::init_mesh_pipeline() {
   pb.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
   pb.set_multisampling_none();
   pb.disable_blending();
-  pb.disable_depthtest();
+  // pb.disable_depthtest();
+  pb.enable_depthtest(VK_TRUE, VK_COMPARE_OP_GREATER_OR_EQUAL);
 
   pb.set_color_attachment_format(_drawImage.imageFormat);
-  pb.set_depth_format(VK_FORMAT_UNDEFINED);
+  pb.set_depth_format(_depthImage.imageFormat);
 
   _meshPipeline = pb.build_pipeline(_device);
   vkDestroyShaderModule(_device, triangleFragShader, nullptr);
@@ -424,7 +448,8 @@ void VulkanEngine::init_triangle_pipeline() {
   pb.disable_depthtest();
 
   pb.set_color_attachment_format(_drawImage.imageFormat);
-  pb.set_depth_format(VK_FORMAT_UNDEFINED);
+  pb.set_depth_format(VK_FORMAT_D32_SFLOAT);
+  // pb.set_depth_format(VK_FORMAT_UNDEFINED);
 
   _trianglePipeline = pb.build_pipeline(_device);
   vkDestroyShaderModule(_device, triangleFragShader, nullptr);
@@ -745,8 +770,10 @@ void VulkanEngine::draw_background(VkCommandBuffer cmd) {
 void VulkanEngine::draw_geometry(VkCommandBuffer cmd) {
   VkRenderingAttachmentInfo clrAttachment = vkinit::attachment_info(
       _drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+  VkRenderingAttachmentInfo dpthAttachment = vkinit::depth_attachment_info(
+      _depthImage.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
   VkRenderingInfo renderInfo =
-      vkinit::rendering_info(_drawExtent, &clrAttachment, nullptr);
+      vkinit::rendering_info(_drawExtent, &clrAttachment, &dpthAttachment);
   vkCmdBeginRendering(cmd, &renderInfo);
   vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _trianglePipeline);
 
@@ -789,6 +816,16 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd) {
   vkCmdDrawIndexed(cmd, 6, 1, 0, 0, 0);
 
   pushConstants.worldMatrix = glm::mat4(1.f);
+  pushConstants.worldMatrix =
+      glm::rotate(glm::mat4(1.f), glm::radians(40.f), glm::vec3(1.f, 1.f, 0.f));
+  glm::mat4 view = glm::translate(glm::mat4(1.f), glm::vec3(0.f, 0.f, -5.f));
+  glm::mat4 proj = glm::perspective(
+      glm::radians(70.f), (float)_drawExtent.width / (float)_drawExtent.height,
+      1000.f, 0.1f);
+
+  proj[1][1] *= -1;
+
+  pushConstants.worldMatrix = proj * view * pushConstants.worldMatrix;
   pushConstants.vertexBuffer = testMesh[2]->buffers.vertexBufferAddress;
 
   vkCmdPushConstants(cmd, _meshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0,
@@ -849,6 +886,8 @@ void VulkanEngine::draw() {
   //                          VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
   vkutil::transition_image(cmd, _drawImage.image, VK_IMAGE_LAYOUT_GENERAL,
                            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+  vkutil::transition_image(cmd, _depthImage.image, VK_IMAGE_LAYOUT_UNDEFINED,
+                           VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
   draw_geometry(cmd);
 
