@@ -2,6 +2,9 @@
 // or project specific include files.
 #pragma once
 
+#include "glm/ext/matrix_float4x4.hpp"
+#include "glm/ext/vector_float3.hpp"
+#include "glm/gtx/quaternion.hpp"
 #include <array>
 #include <deque>
 #include <functional>
@@ -34,6 +37,18 @@ struct ComputePushConstants {
   glm::vec4 color2;
   glm::vec4 data3;
   glm::vec4 data4;
+};
+
+struct Pose {
+  glm::vec3 location;
+  glm::vec3 rotation;
+
+  glm::mat4 createYawPitchRotation() {
+    return glm::rotate(glm::rotate(glm::rotate(glm::mat4(1.f), rotation.z,
+                                               glm::vec3(0.f, 0.f, 1.f)),
+                                   rotation.y, glm::vec3(0.f, 1.f, 0.f)),
+                       rotation.x, glm::vec3(1.f, 0.f, 0.f));
+  }
 };
 
 struct ComputeEffect {

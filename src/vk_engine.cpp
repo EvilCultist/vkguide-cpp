@@ -354,7 +354,6 @@ void VulkanEngine::init_descriptors() {
 
 void VulkanEngine::init_pipelines() {
   init_background_pipelines();
-  init_triangle_pipeline();
   init_mesh_pipeline();
 }
 
@@ -410,54 +409,6 @@ void VulkanEngine::init_mesh_pipeline() {
   _mainDeletionQueue.push_function([=, this]() {
     vkDestroyPipelineLayout(_device, _meshPipelineLayout, nullptr);
     vkDestroyPipeline(_device, _meshPipeline, nullptr);
-  });
-}
-
-void VulkanEngine::init_triangle_pipeline() {
-  VkShaderModule triangleFragShader;
-  if (!vkutil::load_shader_module("./shaders/colored_triangle.frag.spv",
-                                  _device, &triangleFragShader)) {
-    fmt::println(stderr,
-                 "Error when building the triangle fragment shader module");
-  } else {
-    fmt::println("Triangle fragment shader succesfully loaded");
-  }
-
-  VkShaderModule triangleVertShader;
-  if (!vkutil::load_shader_module("./shaders/colored_triangle.vert.spv",
-                                  _device, &triangleVertShader)) {
-    fmt::println(stderr,
-                 "Error when building the triangle fragment shader module");
-  } else {
-    fmt::println("Triangle fragment shader succesfully loaded");
-  }
-
-  VkPipelineLayoutCreateInfo pipeline_layout_info =
-      vkinit::pipeline_layout_create_info();
-  VK_CHECK(vkCreatePipelineLayout(_device, &pipeline_layout_info, nullptr,
-                                  &_trianglePipelineLayout));
-
-  PipelineBuilder pb;
-  pb._pipelineLayout = _trianglePipelineLayout;
-  pb.set_shaders(triangleVertShader, triangleFragShader);
-  pb.set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-  pb.set_polygon_mode(VK_POLYGON_MODE_FILL);
-  pb.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
-  pb.set_multisampling_none();
-  pb.disable_blending();
-  pb.disable_depthtest();
-
-  pb.set_color_attachment_format(_drawImage.imageFormat);
-  pb.set_depth_format(VK_FORMAT_D32_SFLOAT);
-  // pb.set_depth_format(VK_FORMAT_UNDEFINED);
-
-  _trianglePipeline = pb.build_pipeline(_device);
-  vkDestroyShaderModule(_device, triangleFragShader, nullptr);
-  vkDestroyShaderModule(_device, triangleVertShader, nullptr);
-
-  _mainDeletionQueue.push_function([=, this]() {
-    vkDestroyPipelineLayout(_device, _trianglePipelineLayout, nullptr);
-    vkDestroyPipeline(_device, _trianglePipeline, nullptr);
   });
 }
 
@@ -546,34 +497,13 @@ void VulkanEngine::init_background_pipelines() {
 }
 
 void VulkanEngine::init_default_data() {
-  std::array<Vertex, 4> rect_vertices;
-  rect_vertices[0].position = {0.5, -0.5, 0};
-  rect_vertices[1].position = {0.5, 0.5, 0};
-  rect_vertices[2].position = {-0.5, -0.5, 0};
-  rect_vertices[3].position = {-0.5, 0.5, 0};
-
-  rect_vertices[0].color = {0, 0, 0, 1};
-  rect_vertices[1].color = {0.5, 0.5, 0.5, 1};
-  rect_vertices[2].color = {1, 0, 0, 1};
-  rect_vertices[3].color = {0, 1, 0, 1};
-
-  std::array<uint32_t, 6> rect_indices;
-
-  rect_indices[0] = 0;
-  rect_indices[1] = 1;
-  rect_indices[2] = 2;
-
-  rect_indices[3] = 2;
-  rect_indices[4] = 1;
-  rect_indices[5] = 3;
-
-  rectangle = uploadMesh(rect_indices, rect_vertices);
 
   testMesh = std::move(loadGltfMeshes(this, "./assets/basicmesh.glb")).value();
 
+  monkey_model.location.z = -5.f;
+  fov_user = 70;
+
   _mainDeletionQueue.push_function([&] {
-    destroy_buffer(rectangle.indexBuffer);
-    destroy_buffer(rectangle.vertexBuffer);
     for (auto &i : testMesh) {
       destroy_buffer(i->buffers.vertexBuffer);
       destroy_buffer(i->buffers.indexBuffer);
@@ -775,7 +705,7 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd) {
   VkRenderingInfo renderInfo =
       vkinit::rendering_info(_drawExtent, &clrAttachment, &dpthAttachment);
   vkCmdBeginRendering(cmd, &renderInfo);
-  vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _trianglePipeline);
+  vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshPipeline);
 
   VkViewport viewport{};
   viewport.x = 0;
@@ -795,37 +725,21 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd) {
 
   vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-  vkCmdDraw(cmd, 3, 1, 0, 0);
-
-  vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshPipeline);
-  // I do not need to reset viewport and scissor, even for a different pipeline,
-  // why?
-  //
-  // vkCmdSetViewport(cmd, 0, 1, &viewport);
-  // vkCmdSetScissor(cmd, 0, 1, &scissor);
+  glm::mat4 view = glm::mat4(1.f);
+  view = glm::translate(view, -view_settings.location);
+  view *= view_settings.createYawPitchRotation();
+  glm::mat4 proj = glm::perspective(
+      glm::radians(fov_user),
+      (float)_drawExtent.width / (float)_drawExtent.height, 1000.f, 0.1f);
 
   GPUDrawPushConstants pushConstants{};
-  pushConstants.worldMatrix = glm::mat4(1.f);
-  pushConstants.vertexBuffer = rectangle.vertexBufferAddress;
-
-  vkCmdPushConstants(cmd, _meshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0,
-                     sizeof(pushConstants), &pushConstants);
-  vkCmdBindIndexBuffer(cmd, rectangle.indexBuffer.buffer, 0,
-                       VK_INDEX_TYPE_UINT32);
-
-  vkCmdDrawIndexed(cmd, 6, 1, 0, 0, 0);
-
-  pushConstants.worldMatrix = glm::mat4(1.f);
-  pushConstants.worldMatrix =
-      glm::rotate(glm::mat4(1.f), glm::radians(40.f), glm::vec3(1.f, 1.f, 0.f));
-  glm::mat4 view = glm::translate(glm::mat4(1.f), glm::vec3(0.f, 0.f, -5.f));
-  glm::mat4 proj = glm::perspective(
-      glm::radians(70.f), (float)_drawExtent.width / (float)_drawExtent.height,
-      1000.f, 0.1f);
+  glm::mat4 model = glm::mat4(1.0f);
+  model = glm::translate(model, monkey_model.location);
+  model *= monkey_model.createYawPitchRotation();
 
   proj[1][1] *= -1;
 
-  pushConstants.worldMatrix = proj * view * pushConstants.worldMatrix;
+  pushConstants.worldMatrix = proj * view * model;
   pushConstants.vertexBuffer = testMesh[2]->buffers.vertexBufferAddress;
 
   vkCmdPushConstants(cmd, _meshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0,
@@ -982,17 +896,39 @@ void VulkanEngine::run() {
 
       ComputeEffect &selected = backgroundEffects[currentBackgroundEffect];
 
-      ImGui::Text("Selected effect: ", selected.name);
+      // ImGui::Text("Selected effect: ", selected.name);
 
-      ImGui::SliderInt("Effect Index", &currentBackgroundEffect, 0,
-                       backgroundEffects.size() - 1);
+      if (ImGui::BeginCombo("Selected Effect", selected.name)) {
+        for (int i = 0; i < backgroundEffects.size(); ++i) {
+          if (ImGui::Selectable(backgroundEffects[i].name)) {
+            currentBackgroundEffect = i;
+          };
+        }
+        ImGui::EndCombo();
+      }
 
-      ImGui::InputFloat4("data1", (float *)&selected.data.color1);
-      ImGui::InputFloat4("data2", (float *)&selected.data.color2);
-      ImGui::InputFloat4("data3", (float *)&selected.data.data3);
-      ImGui::InputFloat4("data4", (float *)&selected.data.data4);
+      ImGui::SliderFloat4("data1", (float *)&selected.data.color1, 0.f, 1.f);
+      ImGui::SliderFloat4("data2", (float *)&selected.data.color2, 0.f, 1.f);
+      // ImGui::SliderFloat4("data3", (float *)&selected.data.data3, 0.f, 1.f);
+      // ImGui::SliderFloat4("data4", (float *)&selected.data.data4, 0.f, 1.f);
+      ImGui::End();
     }
-    ImGui::End();
+
+    if (ImGui::Begin("foreground")) {
+      if (ImGui::CollapsingHeader("Monkey Model",
+                                  ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::InputFloat3("LM", (float *)&monkey_model.location);
+        ImGui::SliderFloat3("RM", (float *)&monkey_model.rotation,
+                            -glm::radians(180.f), glm::radians(180.f));
+      }
+      if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::InputFloat3("LC", (float *)&view_settings.location);
+        ImGui::SliderFloat3("RC", (float *)&view_settings.rotation,
+                            -glm::radians(180.f), glm::radians(180.f));
+        ImGui::SliderFloat("FOV", (float *)&fov_user, 0, 180.f);
+      }
+      ImGui::End();
+    }
 
     ImGui::Render();
 

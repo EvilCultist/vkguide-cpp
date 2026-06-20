@@ -81,13 +81,12 @@ private:
   VkPipeline _gradientPipeline;
   VkPipelineLayout _gradientPipelineLayout;
 
-  VkPipeline _trianglePipeline;
-  VkPipelineLayout _trianglePipelineLayout;
-
   VkPipeline _meshPipeline;
   VkPipelineLayout _meshPipelineLayout;
 
-  GPUMeshBuffers rectangle;
+  Pose monkey_model{};
+  Pose view_settings{};
+  float fov_user = 0;
 
   VkFence _immFence;
   VkCommandBuffer _immCommandBuffer;
@@ -109,7 +108,6 @@ private:
   void init_descriptors();
   void init_pipelines();
   void init_background_pipelines();
-  void init_triangle_pipeline(); // graphics pipeline
   void init_mesh_pipeline();
   void init_imgui();
 
