@@ -17,6 +17,7 @@
 #include "vk_loader.h"
 
 constexpr unsigned int FRAME_OVERLAP = 3;
+constexpr bool RESIZABLE = false;
 
 class VulkanEngine {
 public:
@@ -56,6 +57,8 @@ private:
   std::vector<VkImage> _swapchainImages;
   std::vector<VkImageView> _swapchainImageViews;
   VkExtent2D _swapchainExtent;
+  bool resize_requested = false;
+
   FrameData _frames[FRAME_OVERLAP];
   FrameData &get_current_frame() {
     return _frames[_frameNumber % (FRAME_OVERLAP)];
@@ -74,6 +77,7 @@ private:
   AllocatedImage _drawImage;
   AllocatedImage _depthImage;
   VkExtent2D _drawExtent;
+  float renderScale = 1.f;
 
   VkDescriptorSet _drawImageDescriptors;
   VkDescriptorSetLayout _drawImageDescriptorLayout;
@@ -112,7 +116,10 @@ private:
   void init_imgui();
 
   void create_swapchain(uint32_t width, uint32_t height);
+  void resize_swapchain();
   void destroy_swapchain();
+
+  void make_draw_image(bool isResize);
 
   AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage,
                                 VmaMemoryUsage memoryUsage);

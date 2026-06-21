@@ -16,6 +16,7 @@
 #include "vk_loader.h"
 
 #include <SDL.h>
+#include <SDL_video.h>
 #include <SDL_vulkan.h>
 #include <array>
 #include <cstddef>
@@ -54,6 +55,10 @@ void VulkanEngine::init() {
   SDL_Init(SDL_INIT_VIDEO);
 
   SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_VULKAN);
+
+  if (RESIZABLE) {
+    window_flags = (SDL_WindowFlags)(window_flags | SDL_WINDOW_RESIZABLE);
+  }
 
   _window = SDL_CreateWindow("Vulkan Engine", SDL_WINDOWPOS_UNDEFINED,
                              SDL_WINDOWPOS_UNDEFINED, _windowExtent.width,
@@ -174,61 +179,64 @@ void VulkanEngine::init_vulkan() {
 
 void VulkanEngine::init_swapchain() {
   create_swapchain(_windowExtent.width, _windowExtent.height);
-  VkExtent3D drawImageExtent = {
-      _windowExtent.width,
-      _windowExtent.height,
-      1,
-  };
-  _drawImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
-  _drawImage.imageExtent = drawImageExtent;
-
-  VkImageUsageFlags drawImageUsages{};
-  drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-  drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-  drawImageUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
-  drawImageUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-
-  VkImageCreateInfo rimg_info = vkinit::image_create_info(
-      _drawImage.imageFormat, drawImageUsages, _drawImage.imageExtent);
-
-  VmaAllocationCreateInfo rimg_allocinfo{};
-  rimg_allocinfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
-  rimg_allocinfo.requiredFlags =
-      VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-  vmaCreateImage(_allocator, &rimg_info, &rimg_allocinfo, &_drawImage.image,
-                 &_drawImage.allocation, NULL);
-
-  VkImageViewCreateInfo rview_info = vkinit::imageview_create_info(
-      _drawImage.imageFormat, _drawImage.image, VK_IMAGE_ASPECT_COLOR_BIT);
-
-  VK_CHECK(
-      vkCreateImageView(_device, &rview_info, nullptr, &_drawImage.imageView));
-
-  _depthImage.imageFormat = VK_FORMAT_D32_SFLOAT;
-  _depthImage.imageExtent = drawImageExtent;
-
-  VkImageUsageFlags depthImageUsages{};
-  depthImageUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-
-  VkImageCreateInfo dimg_info = vkinit::image_create_info(
-      _depthImage.imageFormat, depthImageUsages, _depthImage.imageExtent);
-
-  vmaCreateImage(_allocator, &dimg_info, &rimg_allocinfo, &_depthImage.image,
-                 &_depthImage.allocation, NULL);
-
-  VkImageViewCreateInfo dview_info = vkinit::imageview_create_info(
-      _depthImage.imageFormat, _depthImage.image, VK_IMAGE_ASPECT_DEPTH_BIT);
-
-  VK_CHECK(
-      vkCreateImageView(_device, &dview_info, nullptr, &_depthImage.imageView));
-
-  _mainDeletionQueue.push_function([=, this]() {
-    vkDestroyImageView(_device, _depthImage.imageView, nullptr);
-    vmaDestroyImage(_allocator, _depthImage.image, _depthImage.allocation);
-    vkDestroyImageView(_device, _drawImage.imageView, nullptr);
-    vmaDestroyImage(_allocator, _drawImage.image, _drawImage.allocation);
-  });
+  make_draw_image(false);
+  // VkExtent3D drawImageExtent = {
+  //     _windowExtent.width,
+  //     _windowExtent.height,
+  //     1,
+  // };
+  // _drawImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+  // _drawImage.imageExtent = drawImageExtent;
+  //
+  // VkImageUsageFlags drawImageUsages{};
+  // drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+  // drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+  // drawImageUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
+  // drawImageUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+  //
+  // VkImageCreateInfo rimg_info = vkinit::image_create_info(
+  //     _drawImage.imageFormat, drawImageUsages, _drawImage.imageExtent);
+  //
+  // VmaAllocationCreateInfo rimg_allocinfo{};
+  // rimg_allocinfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+  // rimg_allocinfo.requiredFlags =
+  //     VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+  //
+  // vmaCreateImage(_allocator, &rimg_info, &rimg_allocinfo, &_drawImage.image,
+  //                &_drawImage.allocation, NULL);
+  //
+  // VkImageViewCreateInfo rview_info = vkinit::imageview_create_info(
+  //     _drawImage.imageFormat, _drawImage.image, VK_IMAGE_ASPECT_COLOR_BIT);
+  //
+  // VK_CHECK(
+  //     vkCreateImageView(_device, &rview_info, nullptr,
+  //     &_drawImage.imageView));
+  //
+  // _depthImage.imageFormat = VK_FORMAT_D32_SFLOAT;
+  // _depthImage.imageExtent = drawImageExtent;
+  //
+  // VkImageUsageFlags depthImageUsages{};
+  // depthImageUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+  //
+  // VkImageCreateInfo dimg_info = vkinit::image_create_info(
+  //     _depthImage.imageFormat, depthImageUsages, _depthImage.imageExtent);
+  //
+  // vmaCreateImage(_allocator, &dimg_info, &rimg_allocinfo, &_depthImage.image,
+  //                &_depthImage.allocation, NULL);
+  //
+  // VkImageViewCreateInfo dview_info = vkinit::imageview_create_info(
+  //     _depthImage.imageFormat, _depthImage.image, VK_IMAGE_ASPECT_DEPTH_BIT);
+  //
+  // VK_CHECK(
+  //     vkCreateImageView(_device, &dview_info, nullptr,
+  //     &_depthImage.imageView));
+  //
+  // _mainDeletionQueue.push_function([&, this]() {
+  //   vkDestroyImageView(_device, _depthImage.imageView, nullptr);
+  //   vmaDestroyImage(_allocator, _depthImage.image, _depthImage.allocation);
+  //   vkDestroyImageView(_device, _drawImage.imageView, nullptr);
+  //   vmaDestroyImage(_allocator, _drawImage.image, _drawImage.allocation);
+  // });
 }
 
 void VulkanEngine::create_swapchain(uint32_t width, uint32_t height) {
@@ -257,6 +265,116 @@ void VulkanEngine::create_swapchain(uint32_t width, uint32_t height) {
   _swapchain = vkbSwapchain.swapchain;
   _swapchainImages = vkbSwapchain.get_images().value();
   _swapchainImageViews = vkbSwapchain.get_image_views().value();
+}
+
+void VulkanEngine::make_draw_image(bool isResize) {
+
+  AllocatedImage newDrawImage;
+  AllocatedImage newDepthImage;
+
+  _drawExtent.width = _windowExtent.width * renderScale;
+  _drawExtent.height = _windowExtent.height * renderScale;
+
+  VkExtent3D drawImageExtent = {
+      _drawExtent.width,
+      _drawExtent.height,
+      1,
+  };
+
+  newDrawImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+  newDrawImage.imageExtent = drawImageExtent;
+
+  VkImageUsageFlags drawImageUsages{};
+  drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+  drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+  drawImageUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
+  drawImageUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+  VkImageCreateInfo rimg_info = vkinit::image_create_info(
+      newDrawImage.imageFormat, drawImageUsages, newDrawImage.imageExtent);
+
+  VmaAllocationCreateInfo rimg_allocinfo{};
+  rimg_allocinfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+  rimg_allocinfo.requiredFlags =
+      VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+  vmaCreateImage(_allocator, &rimg_info, &rimg_allocinfo, &newDrawImage.image,
+                 &newDrawImage.allocation, NULL);
+
+  VkImageViewCreateInfo rview_info = vkinit::imageview_create_info(
+      newDrawImage.imageFormat, newDrawImage.image, VK_IMAGE_ASPECT_COLOR_BIT);
+
+  VK_CHECK(vkCreateImageView(_device, &rview_info, nullptr,
+                             &newDrawImage.imageView));
+
+  newDepthImage.imageFormat = VK_FORMAT_D32_SFLOAT;
+  newDepthImage.imageExtent = drawImageExtent;
+
+  VkImageUsageFlags depthImageUsages{};
+  depthImageUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+
+  VkImageCreateInfo dimg_info = vkinit::image_create_info(
+      newDepthImage.imageFormat, depthImageUsages, newDepthImage.imageExtent);
+
+  vmaCreateImage(_allocator, &dimg_info, &rimg_allocinfo, &newDepthImage.image,
+                 &newDepthImage.allocation, NULL);
+
+  VkImageViewCreateInfo dview_info = vkinit::imageview_create_info(
+      newDepthImage.imageFormat, newDepthImage.image,
+      VK_IMAGE_ASPECT_DEPTH_BIT);
+
+  VK_CHECK(vkCreateImageView(_device, &dview_info, nullptr,
+                             &newDepthImage.imageView));
+
+  std::swap(_drawImage, newDrawImage);
+  std::swap(_depthImage, newDepthImage);
+
+  if (isResize) {
+    vkDeviceWaitIdle(_device);
+    vkDestroyImageView(_device, newDepthImage.imageView, nullptr);
+    vmaDestroyImage(_allocator, newDepthImage.image, newDepthImage.allocation);
+    vkDestroyImageView(_device, newDrawImage.imageView, nullptr);
+    vmaDestroyImage(_allocator, newDrawImage.image, newDrawImage.allocation);
+
+    VkDescriptorImageInfo imgInfo{};
+
+    imgInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+    imgInfo.imageView = _drawImage.imageView;
+
+    VkWriteDescriptorSet drawImageWrite = {};
+    drawImageWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    drawImageWrite.pNext = nullptr;
+
+    drawImageWrite.dstBinding = 0;
+    drawImageWrite.dstSet = _drawImageDescriptors;
+    drawImageWrite.descriptorCount = 1;
+    drawImageWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    drawImageWrite.pImageInfo = &imgInfo;
+
+    vkUpdateDescriptorSets(_device, 1, &drawImageWrite, 0, nullptr);
+  } else {
+    _mainDeletionQueue.push_function([&, this]() {
+      vkDestroyImageView(_device, _depthImage.imageView, nullptr);
+      vmaDestroyImage(_allocator, _depthImage.image, _depthImage.allocation);
+      vkDestroyImageView(_device, _drawImage.imageView, nullptr);
+      vmaDestroyImage(_allocator, _drawImage.image, _drawImage.allocation);
+    });
+  }
+}
+
+void VulkanEngine::resize_swapchain() {
+  vkDeviceWaitIdle(_device);
+
+  destroy_swapchain();
+
+  int w, h;
+  SDL_GetWindowSize(_window, &w, &h);
+  _windowExtent.height = h;
+  _windowExtent.width = w;
+
+  create_swapchain(_windowExtent.width, _windowExtent.height);
+
+  resize_requested = false;
 }
 
 void VulkanEngine::destroy_swapchain() {
@@ -396,6 +514,7 @@ void VulkanEngine::init_mesh_pipeline() {
   pb.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
   pb.set_multisampling_none();
   pb.disable_blending();
+  // pb.enable_blending_additive();
   // pb.disable_depthtest();
   pb.enable_depthtest(VK_TRUE, VK_COMPARE_OP_GREATER_OR_EQUAL);
 
@@ -677,24 +796,11 @@ void VulkanEngine::draw_background(VkCommandBuffer cmd) {
                           _gradientPipelineLayout, 0, 1, &_drawImageDescriptors,
                           0, nullptr);
 
-  // ComputePushConstants pc;
-  // pc.color1 = glm::vec4(1.0, 0.4, 0.3, 1.0);
-  // pc.color2 = glm::vec4(0.0, 0.8, 0.1, 1.0);
-
   vkCmdPushConstants(cmd, _gradientPipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT,
                      0, sizeof(ComputePushConstants), &effect.data);
 
   vkCmdDispatch(cmd, std::ceil(_drawExtent.width / 16.0),
                 std::ceil(_drawExtent.height / 16.0), 1);
-
-  // VkClearColorValue clearValue;
-  // float flash = std::abs(std::sin(_frameNumber / 144.0f));
-  // clearValue = {{0.0f, 0.0f, flash, 1.0f}};
-  // VkImageSubresourceRange clearRange =
-  //     vkinit::image_subresource_range(VK_IMAGE_ASPECT_COLOR_BIT);
-  //
-  // vkCmdClearColorImage(cmd, _drawImage.image, VK_IMAGE_LAYOUT_GENERAL,
-  //                      &clearValue, 1, &clearRange);
 }
 
 void VulkanEngine::draw_geometry(VkCommandBuffer cmd) {
@@ -772,13 +878,26 @@ void VulkanEngine::draw() {
   VK_CHECK(vkResetFences(_device, 1, &get_current_frame()._renderFence));
 
   uint32_t swapchainImageIndex;
-  VK_CHECK(vkAcquireNextImageKHR(_device, _swapchain, 1'000'000'000,
+  auto e = vkAcquireNextImageKHR(_device, _swapchain, 1'000'000'000,
                                  get_current_frame()._swapchainSemaphore,
-                                 nullptr, &swapchainImageIndex));
+                                 nullptr, &swapchainImageIndex);
+
+  if (e == VK_ERROR_OUT_OF_DATE_KHR) {
+    resize_requested = true;
+    return;
+  } else {
+    VK_CHECK(e);
+  }
 
   VkCommandBuffer cmd = get_current_frame()._mainCommandBuffer;
   VK_CHECK(vkResetCommandBuffer(cmd, 0));
 
+  // _drawExtent.width =
+  //     std::min(_drawImage.imageExtent.width, _swapchainExtent.width) *
+  //     renderScale;
+  // _drawExtent.height =
+  //     std::min(_drawImage.imageExtent.height, _swapchainExtent.height) *
+  //     renderScale;
   _drawExtent.width = _drawImage.imageExtent.width;
   _drawExtent.height = _drawImage.imageExtent.height;
 
@@ -851,7 +970,12 @@ void VulkanEngine::draw() {
 
   presentInfo.pImageIndices = &swapchainImageIndex;
 
-  VK_CHECK(vkQueuePresentKHR(_graphicsQueue, &presentInfo));
+  e = vkQueuePresentKHR(_graphicsQueue, &presentInfo);
+  if (e == VK_ERROR_OUT_OF_DATE_KHR) {
+    resize_requested = true;
+  } else {
+    VK_CHECK(e);
+  }
 
   _frameNumber++;
 }
@@ -887,6 +1011,10 @@ void VulkanEngine::run() {
       continue;
     }
 
+    if (resize_requested) {
+      resize_swapchain();
+    }
+
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplSDL2_NewFrame();
     ImGui::NewFrame();
@@ -896,7 +1024,7 @@ void VulkanEngine::run() {
 
       ComputeEffect &selected = backgroundEffects[currentBackgroundEffect];
 
-      // ImGui::Text("Selected effect: ", selected.name);
+      ImGui::Text("framerate: %6.2f", ImGui::GetIO().Framerate);
 
       if (ImGui::BeginCombo("Selected Effect", selected.name)) {
         for (int i = 0; i < backgroundEffects.size(); ++i) {
@@ -907,10 +1035,15 @@ void VulkanEngine::run() {
         ImGui::EndCombo();
       }
 
-      ImGui::SliderFloat4("data1", (float *)&selected.data.color1, 0.f, 1.f);
-      ImGui::SliderFloat4("data2", (float *)&selected.data.color2, 0.f, 1.f);
-      // ImGui::SliderFloat4("data3", (float *)&selected.data.data3, 0.f, 1.f);
-      // ImGui::SliderFloat4("data4", (float *)&selected.data.data4, 0.f, 1.f);
+      if (ImGui::CollapsingHeader("bg shader data")) {
+        ImGui::SliderFloat4("data1", (float *)&selected.data.color1, 0.f, 1.f);
+        ImGui::SliderFloat4("data2", (float *)&selected.data.color2, 0.f, 1.f);
+      }
+      ImGui::SliderFloat("Render Scale", &this->renderScale, 0.3f, 1.f);
+      // if (ImGui::IsItemDeactivatedAfterEdit()) {
+      if (ImGui::IsItemEdited()) {
+        make_draw_image(true);
+      }
       ImGui::End();
     }
 
