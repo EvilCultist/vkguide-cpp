@@ -4,15 +4,14 @@
 #pragma once
 
 #include <cstdint>
-#include <deque>
 #include <functional>
 #include <memory>
 #include <vector>
 #include <vk_types.h>
 #include <vulkan/vulkan_core.h>
 
-#include "VkBootstrap.h"
-#include "glm/ext/vector_float4.hpp"
+// #include "VkBootstrap.h"
+#include "fastgltf/types.hpp"
 #include "vk_descriptors.h"
 #include "vk_loader.h"
 
@@ -98,6 +97,20 @@ private:
 
   DescriptorAllocator globalDescriptorAllocator;
 
+  GPUSceneData sceneData;
+  VkDescriptorSetLayout _gpuSceneDataDescriptorLayout;
+
+  // temp for monkey with texture
+  VkDescriptorSetLayout _singleImageDescriptorLayout;
+
+  AllocatedImage _whiteImage;
+  AllocatedImage _blackImage;
+  AllocatedImage _greyImage;
+  AllocatedImage _errorCheckerboardImage;
+
+  VkSampler _defaultSamplerLinear;
+  VkSampler _defaultSamplerNearest;
+
   std::vector<ComputeEffect> backgroundEffects;
   int currentBackgroundEffect{0};
 
@@ -124,6 +137,11 @@ private:
   AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage,
                                 VmaMemoryUsage memoryUsage);
   void destroy_buffer(const AllocatedBuffer &buff);
+  AllocatedImage create_image(VkExtent3D size, VkFormat format,
+                              VkImageUsageFlags usage, bool mipmapped = false);
+  AllocatedImage create_image(void *data, VkExtent3D size, VkFormat format,
+                              VkImageUsageFlags usage, bool mipmapped = false);
+  void destroy_image(const AllocatedImage &img);
 
   void draw_background(VkCommandBuffer cmd);
   void draw_geometry(VkCommandBuffer cmd);

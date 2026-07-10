@@ -2,17 +2,13 @@
 // or project specific include files.
 #pragma once
 
+#include "glm/detail/qualifier.hpp"
 #include "glm/ext/matrix_float4x4.hpp"
 #include "glm/ext/vector_float3.hpp"
 #include "glm/gtx/quaternion.hpp"
-#include <array>
+#include "vk_descriptors.h"
 #include <deque>
 #include <functional>
-#include <memory>
-#include <optional>
-#include <span>
-#include <string>
-#include <vector>
 
 #include <vk_mem_alloc.h>
 #include <vulkan/vk_enum_string_helper.h>
@@ -83,6 +79,8 @@ struct FrameData {
   VkSemaphore _swapchainSemaphore, _renderSemaphore;
   VkFence _renderFence;
   DeletionQueue _deletionQueue;
+
+  DescriptorAllocatorGrowable _frameDescriptors;
 };
 
 struct AllocatedImage {
@@ -113,6 +111,15 @@ struct GPUMeshBuffers {
   AllocatedBuffer indexBuffer;
   AllocatedBuffer vertexBuffer;
   VkDeviceAddress vertexBufferAddress;
+};
+
+struct GPUSceneData {
+  glm::mat4 view;
+  glm::mat4 proj;
+  glm::mat4 projview;
+  glm::vec3 ambientColor;
+  glm::vec3 sunlightDirection;
+  glm::vec3 sunLightColor;
 };
 
 struct GPUDrawPushConstants {

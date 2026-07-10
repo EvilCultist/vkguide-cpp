@@ -1,12 +1,12 @@
 ﻿#pragma once
 
 #include <cstdint>
+#include <deque>
 #include <span>
 #include <vector>
-#include <vk_types.h>
 #include <vulkan/vulkan_core.h>
 
-struct DescriptorLayputBuilder {
+struct DescriptorLayoutBuilder {
   std::vector<VkDescriptorSetLayoutBinding> Bindings;
 
   void add_binding(uint32_t binding, VkDescriptorType type);
@@ -16,6 +16,8 @@ struct DescriptorLayputBuilder {
                               void *pnext = nullptr,
                               VkDescriptorSetLayoutCreateFlags flags = 0);
 };
+
+// deletetetete
 
 struct DescriptorAllocator {
 
@@ -32,4 +34,49 @@ struct DescriptorAllocator {
   void destroy_pool(VkDevice device);
 
   VkDescriptorSet allocate(VkDevice device, VkDescriptorSetLayout layout);
+};
+
+// till here
+
+struct DescriptorAllocatorGrowable {
+public:
+  struct PoolSizeRatio {
+    VkDescriptorType type;
+    float ratio;
+  };
+
+  void init(VkDevice device, uint32_t maxSets,
+            std::span<PoolSizeRatio> poolRatios);
+  void clear_pools(VkDevice device);
+  void destroy_pools(VkDevice device);
+
+  VkDescriptorSet allocate(VkDevice device, VkDescriptorSetLayout layout,
+                           void *pnext = nullptr);
+
+private:
+  VkDescriptorPool get_pool(VkDevice device);
+  VkDescriptorPool create_pool(VkDevice device, uint32_t setCount,
+                               std::span<PoolSizeRatio> poolRatios);
+
+  std::vector<PoolSizeRatio> ratios;
+  std::vector<VkDescriptorPool> fullPools;
+  std::vector<VkDescriptorPool> readyPools;
+  uint32_t setsPerPool;
+};
+
+struct DescriptorWriter {
+public:
+  std::deque<VkDescriptorImageInfo> imageInfos;
+  std::deque<VkDescriptorBufferInfo> bufferInfos;
+  std::vector<VkWriteDescriptorSet> writes;
+
+  void write_image(int binding, VkImageView image, VkSampler sampler,
+                   VkImageLayout layout, VkDescriptorType type);
+  void write_buffer(int binding, VkBuffer buffer, size_t size, size_t offset,
+                    VkDescriptorType type);
+
+  void clear();
+  void update_set(VkDevice device, VkDescriptorSet set);
+
+private:
 };
