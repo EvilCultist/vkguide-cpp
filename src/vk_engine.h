@@ -12,16 +12,65 @@
 
 // #include "VkBootstrap.h"
 #include "fastgltf/types.hpp"
+#include "glm/detail/qualifier.hpp"
 #include "vk_descriptors.h"
 #include "vk_loader.h"
 
 constexpr unsigned int FRAME_OVERLAP = 3;
 constexpr bool RESIZABLE = false;
 
+struct GLTFMetallic_Roughness {
+  MaterialPipeline opaquePipeline;
+  MaterialPipeline transparentPipeline;
+
+  VkDescriptorSetLayout materialLayout;
+
+  struct MaterialConstants {
+    glm::vec4 colorFactors;
+    glm::vec4 metal_rough_factor;
+    // padding
+    glm::vec4 extra[14];
+  };
+
+  struct MaterialResources {
+    AllocatedImage colorImage;
+    VkSampler colorSampler;
+    AllocatedImage metalRoughImage;
+    VkSampler metalRoughSampler;
+    VkBuffer dataBuffer;
+    uint32_t dataBufferOffset;
+  };
+
+  DescriptorWriter writer;
+
+  void build_pipelines(VulkanEngine *engine);
+  void clear_resources(VkDevice device);
+
+  MaterialInstance
+  write_material(VkDevice device, MaterialPass pass,
+                 const MaterialResources &resources,
+                 DescriptorAllocatorGrowable &descriptorAllocator);
+};
+
 class VulkanEngine {
 public:
   bool _isInitialized{false};
   int _frameNumber{0};
+  VkDevice _device;
+
+  GPUSceneData sceneData;
+  VkDescriptorSetLayout _gpuSceneDataDescriptorLayout;
+
+  AllocatedImage _drawImage;
+  AllocatedImage _depthImage;
+  VkExtent2D _drawExtent;
+  float renderScale = 1.f;
+
+  VmaAllocator _allocator;
+  DeletionQueue _mainDeletionQueue;
+
+  MaterialInstance defaultData;
+  GLTFMetallic_Roughness metalRoughMaterial;
 
   // initializes everything in the engine
   void init();
@@ -47,7 +96,6 @@ private:
   VkInstance _instance;
   VkDebugUtilsMessengerEXT _debug_messenger;
   VkPhysicalDevice _chosenGPU;
-  VkDevice _device;
   VkSurfaceKHR _surface;
 
   VkSwapchainKHR _swapchain;
@@ -70,14 +118,6 @@ private:
 
   static VulkanEngine &Get();
 
-  VmaAllocator _allocator;
-  DeletionQueue _mainDeletionQueue;
-
-  AllocatedImage _drawImage;
-  AllocatedImage _depthImage;
-  VkExtent2D _drawExtent;
-  float renderScale = 1.f;
-
   VkDescriptorSet _drawImageDescriptors;
   VkDescriptorSetLayout _drawImageDescriptorLayout;
 
@@ -95,10 +135,7 @@ private:
   VkCommandBuffer _immCommandBuffer;
   VkCommandPool _immCommandPool;
 
-  DescriptorAllocator globalDescriptorAllocator;
-
-  GPUSceneData sceneData;
-  VkDescriptorSetLayout _gpuSceneDataDescriptorLayout;
+  DescriptorAllocatorGrowable globalDescriptorAllocator;
 
   // temp for monkey with texture
   VkDescriptorSetLayout _singleImageDescriptorLayout;

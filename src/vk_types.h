@@ -7,6 +7,7 @@
 #include "glm/ext/vector_float3.hpp"
 #include "glm/gtx/quaternion.hpp"
 #include "vk_descriptors.h"
+#include <cstdint>
 #include <deque>
 #include <functional>
 
@@ -18,6 +19,7 @@
 
 #include <glm/mat4x4.hpp>
 #include <glm/vec4.hpp>
+#include <vulkan/vulkan_core.h>
 
 #define VK_CHECK(x)                                                            \
   do {                                                                         \
@@ -125,4 +127,32 @@ struct GPUSceneData {
 struct GPUDrawPushConstants {
   glm::mat4 worldMatrix;
   VkDeviceAddress vertexBuffer;
+};
+
+enum class MaterialPass : uint8_t {
+  MainColor,
+  Transparent,
+  Other,
+};
+
+struct MaterialPipeline {
+  VkPipeline pipeline;
+  VkPipelineLayout layout;
+};
+
+struct MaterialInstance {
+  MaterialPipeline *pipeline;
+  VkDescriptorSet materialSet;
+  MaterialPass passType;
+};
+
+struct RenderObject {
+  uint32_t indexCount;
+  uint32_t firstIndex;
+
+  VkBuffer indexBuffer;
+  MaterialInstance *material;
+
+  glm::mat4 transform;
+  VkDeviceAddress vertexBufferAddress;
 };
