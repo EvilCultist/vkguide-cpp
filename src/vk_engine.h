@@ -6,6 +6,8 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <random>
+#include <unordered_map>
 #include <vector>
 #include <vk_types.h>
 #include <vulkan/vulkan_core.h>
@@ -18,6 +20,15 @@
 
 constexpr unsigned int FRAME_OVERLAP = 3;
 constexpr bool RESIZABLE = false;
+
+struct DrawContext {
+  std::vector<RenderObject> OpaqueSurfaces;
+};
+
+struct MeshNode : public Node {
+  std::shared_ptr<MeshAsset> mesh;
+  virtual void Draw(const glm::mat4 &topMat, DrawContext &ctx) override;
+};
 
 struct GLTFMetallic_Roughness {
   MaterialPipeline opaquePipeline;
@@ -72,6 +83,9 @@ public:
   MaterialInstance defaultData;
   GLTFMetallic_Roughness metalRoughMaterial;
 
+  DrawContext mainDrawContext;
+  std::unordered_map<std::string, std::shared_ptr<Node>> loadedNodes;
+
   // initializes everything in the engine
   void init();
 
@@ -90,6 +104,8 @@ public:
                             std::span<Vertex> vertices);
 
 private:
+  std::mt19937 rnd;
+
   bool stop_rendering{false};
   VkExtent2D _windowExtent{1700, 900};
 
@@ -169,16 +185,19 @@ private:
   void resize_swapchain();
   void destroy_swapchain();
 
-  void make_draw_image(bool isResize);
-
   AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage,
                                 VmaMemoryUsage memoryUsage);
   void destroy_buffer(const AllocatedBuffer &buff);
+
   AllocatedImage create_image(VkExtent3D size, VkFormat format,
                               VkImageUsageFlags usage, bool mipmapped = false);
   AllocatedImage create_image(void *data, VkExtent3D size, VkFormat format,
                               VkImageUsageFlags usage, bool mipmapped = false);
   void destroy_image(const AllocatedImage &img);
+
+  void make_draw_image(bool isResize);
+
+  void update_scene();
 
   void draw_background(VkCommandBuffer cmd);
   void draw_geometry(VkCommandBuffer cmd);

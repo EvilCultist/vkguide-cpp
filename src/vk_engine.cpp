@@ -27,6 +27,8 @@
 #include <cstring>
 #include <emmintrin.h>
 #include <iterator>
+#include <memory>
+#include <random>
 #include <utility>
 #include <vector>
 
@@ -44,6 +46,23 @@
 #include <chrono>
 #include <thread>
 #include <vulkan/vulkan_core.h>
+
+void MeshNode::Draw(const glm::mat4 &topMat, DrawContext &ctx) {
+  glm::mat4 nodeMatrix = topMat * worldTransform;
+  for (auto &s : mesh->surfaces) {
+    RenderObject def;
+    def.indexCount = s.count;
+    def.firstIndex = s.startIndex;
+    def.indexBuffer = mesh->buffers.indexBuffer.buffer;
+    def.material = &s.material->data;
+
+    def.transform = nodeMatrix;
+    def.vertexBufferAddress = mesh->buffers.vertexBufferAddress;
+
+    ctx.OpaqueSurfaces.push_back(def);
+  }
+  Node::Draw(topMat, ctx);
+}
 
 void GLTFMetallic_Roughness::build_pipelines(VulkanEngine *engine) {
   VkShaderModule meshFragShader;
@@ -155,6 +174,8 @@ void VulkanEngine::init() {
   // only one engine initialization is allowed with the application.
   assert(loadedEngine == nullptr);
   loadedEngine = this;
+
+  rnd.seed(std::mt19937{}());
 
   // We initialize SDL and create a window with it.
   SDL_Init(SDL_INIT_VIDEO);
@@ -829,6 +850,20 @@ void VulkanEngine::init_default_data() {
   defaultData = metalRoughMaterial.write_material(
       _device, MaterialPass::MainColor, materialResources,
       globalDescriptorAllocator);
+
+  for (auto &m : testMesh) {
+    std::shared_ptr<MeshNode> newNode = std::make_shared<MeshNode>();
+    newNode->mesh = m;
+
+    newNode->localTransform = glm::mat4{1.f};
+    newNode->worldTransform = glm::mat4{1.f};
+
+    for (auto &s : newNode->mesh->surfaces) {
+      s.material = std::make_shared<GLTFMaterial>(defaultData);
+    }
+
+    loadedNodes[m->name] = std::move(newNode);
+  }
 }
 
 void VulkanEngine::immediate_submit(
@@ -1074,6 +1109,43 @@ GPUMeshBuffers VulkanEngine::uploadMesh(std::span<uint32_t> indices,
   return newSurface;
 }
 
+void VulkanEngine::update_scene() {
+  mainDrawContext.OpaqueSurfaces.clear();
+
+  glm::mat4 model = glm::mat4(1.0f);
+  model = glm::translate(model, monkey_model.location);
+  model *= monkey_model.createYawPitchRotation();
+  loadedNodes["Suzanne"]->Draw(model, mainDrawContext);
+
+  for (int x = -3; x < 3; ++x) {
+    const glm::mat4 cubeTranslation = glm::translate(
+        glm::mat4{1.0f}, glm::vec3{static_cast<float>(x), 1.0f, 0.0f});
+    const glm::mat4 cubeScale = glm::scale(glm::mat4{1.0f}, glm::vec3{0.2f});
+
+    loadedNodes["Cube"]->Draw(cubeTranslation * cubeScale, mainDrawContext);
+  }
+
+  glm::mat4 view = glm::mat4(1.f);
+  view = glm::translate(view, -view_settings.location);
+  view *= view_settings.createYawPitchRotation();
+  glm::mat4 proj = glm::perspective(
+      glm::radians(fov_user),
+      (float)_drawExtent.width / (float)_drawExtent.height, 1000.f, 0.1f);
+
+  proj[1][1] *= -1;
+
+  sceneData.proj = proj;
+  sceneData.view = view;
+  sceneData.projview = proj * view;
+
+  sceneData.ambientColor = glm::vec4(.1f);
+  sceneData.sunLightColor = glm::vec4(1.f);
+  sceneData.sunlightDirection = glm::vec4(0, 1, 0.5, 1.f);
+  // sceneData.ambientColor = glm::vec4(0.7f, 0.7f, 1.f, 0.1f);
+  // sceneData.sunlightDirection = glm::vec4(50.f, 100.f, 25.f, 1.f);
+  // sceneData.sunLightColor = glm::vec4(1.f, 0.8f, 0.3f, 1.f);
+}
+
 void VulkanEngine::draw_background(VkCommandBuffer cmd) {
 
   ComputeEffect &effect = backgroundEffects[currentBackgroundEffect];
@@ -1118,7 +1190,7 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd) {
   VkRenderingInfo renderInfo =
       vkinit::rendering_info(_drawExtent, &clrAttachment, &dpthAttachment);
   vkCmdBeginRendering(cmd, &renderInfo);
-  vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshPipeline);
+  // vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshPipeline);
 
   VkViewport viewport{};
   viewport.x = 0;
@@ -1150,40 +1222,26 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd) {
     writer.update_set(_device, imageSet);
   }
 
-  vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                          _meshPipelineLayout, 0, 1, &imageSet, 0, nullptr);
+  for (const RenderObject &draw : mainDrawContext.OpaqueSurfaces) {
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                      draw.material->pipeline->pipeline);
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            draw.material->pipeline->layout, 0, 1,
+                            &globalDescriptor, 0, nullptr);
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            draw.material->pipeline->layout, 1, 1,
+                            &draw.material->materialSet, 0, nullptr);
+    vkCmdBindIndexBuffer(cmd, draw.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
-  glm::mat4 view = glm::mat4(1.f);
-  view = glm::translate(view, -view_settings.location);
-  view *= view_settings.createYawPitchRotation();
-  glm::mat4 proj = glm::perspective(
-      glm::radians(fov_user),
-      (float)_drawExtent.width / (float)_drawExtent.height, 1000.f, 0.1f);
+    GPUDrawPushConstants pushConstants;
+    pushConstants.vertexBuffer = draw.vertexBufferAddress;
+    pushConstants.worldMatrix = draw.transform;
 
-  GPUDrawPushConstants pushConstants{};
-  glm::mat4 model = glm::mat4(1.0f);
-  model = glm::translate(model, monkey_model.location);
-  model *= monkey_model.createYawPitchRotation();
-
-  proj[1][1] *= -1;
-
-  sceneData.proj = proj;
-  sceneData.view = view;
-  sceneData.projview = proj * view;
-  sceneData.ambientColor = glm::vec3(0.7f, 0.7f, 1.f);
-  sceneData.sunlightDirection = glm::vec3(50.f, 100.f, 25.f);
-  sceneData.sunLightColor = glm::vec3(1.f, 0.8f, 0.3f);
-
-  pushConstants.worldMatrix = sceneData.projview * model;
-  pushConstants.vertexBuffer = testMesh[2]->buffers.vertexBufferAddress;
-
-  vkCmdPushConstants(cmd, _meshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0,
-                     sizeof(pushConstants), &pushConstants);
-  vkCmdBindIndexBuffer(cmd, testMesh[2]->buffers.indexBuffer.buffer, 0,
-                       VK_INDEX_TYPE_UINT32);
-
-  vkCmdDrawIndexed(cmd, testMesh[2]->surfaces[0].count, 1,
-                   testMesh[2]->surfaces[0].startIndex, 0, 0);
+    vkCmdPushConstants(cmd, draw.material->pipeline->layout,
+                       VK_SHADER_STAGE_VERTEX_BIT, 0,
+                       sizeof(GPUDrawPushConstants), &pushConstants);
+    vkCmdDrawIndexed(cmd, draw.indexCount, 1, draw.firstIndex, 0, 0);
+  }
 
   vkCmdEndRendering(cmd);
 }
@@ -1201,6 +1259,7 @@ void VulkanEngine::draw_imgui(VkCommandBuffer cmd,
 }
 
 void VulkanEngine::draw() {
+  update_scene();
   VK_CHECK(vkWaitForFences(_device, 1, &get_current_frame()._renderFence, true,
                            1'000'000'000));
   get_current_frame()._deletionQueue.flush();

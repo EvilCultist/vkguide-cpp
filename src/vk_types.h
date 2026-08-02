@@ -11,6 +11,7 @@
 #include <deque>
 #include <functional>
 
+#include <memory>
 #include <vk_mem_alloc.h>
 #include <vulkan/vk_enum_string_helper.h>
 #include <vulkan/vulkan.h>
@@ -119,9 +120,9 @@ struct GPUSceneData {
   glm::mat4 view;
   glm::mat4 proj;
   glm::mat4 projview;
-  glm::vec3 ambientColor;
-  glm::vec3 sunlightDirection;
-  glm::vec3 sunLightColor;
+  glm::vec4 ambientColor;
+  glm::vec4 sunlightDirection;
+  glm::vec4 sunLightColor;
 };
 
 struct GPUDrawPushConstants {
@@ -155,4 +156,31 @@ struct RenderObject {
 
   glm::mat4 transform;
   VkDeviceAddress vertexBufferAddress;
+};
+
+struct DrawContext;
+
+class IRenderable {
+  virtual void Draw(const glm::mat4 &topMat, DrawContext &ctx) = 0;
+};
+
+struct Node : public IRenderable {
+  std::weak_ptr<Node> parent;
+  std::vector<std::shared_ptr<Node>> children;
+
+  glm::mat4 localTransform;
+  glm::mat4 worldTransform;
+
+  void refreshTransform(const glm::mat4 &parentMat) {
+    worldTransform = parentMat * localTransform;
+    for (auto &c : children) {
+      c->refreshTransform(worldTransform);
+    }
+  }
+
+  virtual void Draw(const glm::mat4 &topMat, DrawContext &ctx) {
+    for (auto &c : children) {
+      c->Draw(topMat, ctx);
+    }
+  }
 };
