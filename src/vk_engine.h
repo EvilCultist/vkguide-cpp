@@ -13,6 +13,7 @@
 #include <vulkan/vulkan_core.h>
 
 // #include "VkBootstrap.h"
+#include "camera.h"
 #include "fastgltf/types.hpp"
 #include "glm/detail/qualifier.hpp"
 #include "vk_descriptors.h"
@@ -144,7 +145,7 @@ private:
   VkPipelineLayout _meshPipelineLayout;
 
   Pose monkey_model{};
-  Pose view_settings{};
+  std::unique_ptr<Camera> mainCamera;
   float fov_user = 0;
 
   VkFence _immFence;

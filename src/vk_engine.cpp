@@ -190,6 +190,8 @@ void VulkanEngine::init() {
                              SDL_WINDOWPOS_UNDEFINED, _windowExtent.width,
                              _windowExtent.height, window_flags);
 
+  this->mainCamera = std::make_unique<Camera>(glm::vec3(0.f), 0.f, 0.f, 0.01f);
+
   init_vulkan();
 
   init_swapchain();
@@ -1111,6 +1113,7 @@ GPUMeshBuffers VulkanEngine::uploadMesh(std::span<uint32_t> indices,
 
 void VulkanEngine::update_scene() {
   mainDrawContext.OpaqueSurfaces.clear();
+  mainCamera->update();
 
   glm::mat4 model = glm::mat4(1.0f);
   model = glm::translate(model, monkey_model.location);
@@ -1125,9 +1128,10 @@ void VulkanEngine::update_scene() {
     loadedNodes["Cube"]->Draw(cubeTranslation * cubeScale, mainDrawContext);
   }
 
-  glm::mat4 view = glm::mat4(1.f);
-  view = glm::translate(view, -view_settings.location);
-  view *= view_settings.createYawPitchRotation();
+  // glm::mat4 view = glm::mat4(1.f);
+  // view = glm::translate(view, -view_settings.location);
+  // view *= view_settings.createYawPitchRotation();
+  auto view = mainCamera->getViewMatrix();
   glm::mat4 proj = glm::perspective(
       glm::radians(fov_user),
       (float)_drawExtent.width / (float)_drawExtent.height, 1000.f, 0.1f);
@@ -1135,7 +1139,7 @@ void VulkanEngine::update_scene() {
   proj[1][1] *= -1;
 
   sceneData.proj = proj;
-  sceneData.view = view;
+  sceneData.view = mainCamera->getViewMatrix();
   sceneData.projview = proj * view;
 
   sceneData.ambientColor = glm::vec4(.1f);
@@ -1392,6 +1396,7 @@ void VulkanEngine::run() {
         }
       }
 
+      mainCamera->processSDLEvent(e);
       ImGui_ImplSDL2_ProcessEvent(&e);
     }
 
@@ -1446,9 +1451,10 @@ void VulkanEngine::run() {
                             -glm::radians(180.f), glm::radians(180.f));
       }
       if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::InputFloat3("LC", (float *)&view_settings.location);
-        ImGui::SliderFloat3("RC", (float *)&view_settings.rotation,
-                            -glm::radians(180.f), glm::radians(180.f));
+        // ImGui::InputFloat3("LC", (float *)&view_settings.location);
+        // ImGui::SliderFloat3("RC", (float *)&view_settings.rotation,
+        // -glm::radians(180.f), glm::radians(180.f));
+        ImGui::Text("Speed", mainCamera->speed);
         ImGui::SliderFloat("FOV", (float *)&fov_user, 0, 180.f);
       }
       ImGui::End();
