@@ -107,6 +107,8 @@ public:
 private:
   std::mt19937 rnd;
 
+  bool show_hud = true;
+
   bool stop_rendering{false};
   VkExtent2D _windowExtent{1700, 900};
 

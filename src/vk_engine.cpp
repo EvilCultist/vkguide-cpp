@@ -19,6 +19,10 @@
 #include "vk_loader.h"
 
 #include <SDL.h>
+#include <SDL_events.h>
+#include <SDL_keycode.h>
+#include <SDL_mouse.h>
+#include <SDL_stdinc.h>
 #include <SDL_video.h>
 #include <SDL_vulkan.h>
 #include <algorithm>
@@ -512,6 +516,7 @@ void VulkanEngine::resize_swapchain() {
   _windowExtent.width = w;
 
   create_swapchain(_windowExtent.width, _windowExtent.height);
+  make_draw_image(true);
 
   resize_requested = false;
 }
@@ -1397,6 +1402,10 @@ void VulkanEngine::run() {
   SDL_Event e;
   bool bQuit = false;
 
+  // SDL_CaptureMouse();
+  SDL_ShowCursor((show_hud) ? SDL_TRUE : SDL_FALSE);
+  SDL_SetRelativeMouseMode((show_hud) ? SDL_FALSE : SDL_TRUE);
+
   // main loop
   while (!bQuit) {
     // Handle events on queue
@@ -1414,8 +1423,17 @@ void VulkanEngine::run() {
         }
       }
 
-      mainCamera->processSDLEvent(e);
-      ImGui_ImplSDL2_ProcessEvent(&e);
+      if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE) {
+        show_hud = !show_hud;
+        SDL_ShowCursor((show_hud) ? SDL_TRUE : SDL_FALSE);
+        SDL_SetRelativeMouseMode((show_hud) ? SDL_FALSE : SDL_TRUE);
+      }
+
+      if (show_hud) {
+        ImGui_ImplSDL2_ProcessEvent(&e);
+      } else {
+        mainCamera->processSDLEvent(e);
+      }
     }
 
     // do not draw if we are minimized
@@ -1433,49 +1451,53 @@ void VulkanEngine::run() {
     ImGui_ImplSDL2_NewFrame();
     ImGui::NewFrame();
 
-    // ImGui::ShowDemoWindow();
-    if (ImGui::Begin("background")) {
+    if (show_hud) {
+      // ImGui::ShowDemoWindow();
+      if (ImGui::Begin("background")) {
 
-      ComputeEffect &selected = backgroundEffects[currentBackgroundEffect];
+        ComputeEffect &selected = backgroundEffects[currentBackgroundEffect];
 
-      ImGui::Text("framerate: %6.2f", ImGui::GetIO().Framerate);
+        ImGui::Text("framerate: %6.2f", ImGui::GetIO().Framerate);
 
-      if (ImGui::BeginCombo("Selected Effect", selected.name)) {
-        for (int i = 0; i < backgroundEffects.size(); ++i) {
-          if (ImGui::Selectable(backgroundEffects[i].name)) {
-            currentBackgroundEffect = i;
-          };
+        if (ImGui::BeginCombo("Selected Effect", selected.name)) {
+          for (int i = 0; i < backgroundEffects.size(); ++i) {
+            if (ImGui::Selectable(backgroundEffects[i].name)) {
+              currentBackgroundEffect = i;
+            };
+          }
+          ImGui::EndCombo();
         }
-        ImGui::EndCombo();
+
+        if (ImGui::CollapsingHeader("bg shader data")) {
+          ImGui::SliderFloat4("data1", (float *)&selected.data.color1, 0.f,
+                              1.f);
+          ImGui::SliderFloat4("data2", (float *)&selected.data.color2, 0.f,
+                              1.f);
+        }
+        ImGui::SliderFloat("Render Scale", &this->renderScale, 0.3f, 1.f);
+        // if (ImGui::IsItemDeactivatedAfterEdit()) {
+        if (ImGui::IsItemEdited()) {
+          make_draw_image(true);
+        }
+        ImGui::End();
       }
 
-      if (ImGui::CollapsingHeader("bg shader data")) {
-        ImGui::SliderFloat4("data1", (float *)&selected.data.color1, 0.f, 1.f);
-        ImGui::SliderFloat4("data2", (float *)&selected.data.color2, 0.f, 1.f);
+      if (ImGui::Begin("foreground")) {
+        if (ImGui::CollapsingHeader("Monkey Model",
+                                    ImGuiTreeNodeFlags_DefaultOpen)) {
+          ImGui::InputFloat3("LM", (float *)&monkey_model.location);
+          ImGui::SliderFloat3("RM", (float *)&monkey_model.rotation,
+                              -glm::radians(180.f), glm::radians(180.f));
+        }
+        if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
+          // ImGui::InputFloat3("LC", (float *)&view_settings.location);
+          // ImGui::SliderFloat3("RC", (float *)&view_settings.rotation,
+          // -glm::radians(180.f), glm::radians(180.f));
+          ImGui::Text("Speed", mainCamera->speed);
+          ImGui::SliderFloat("FOV", (float *)&fov_user, 0, 180.f);
+        }
+        ImGui::End();
       }
-      ImGui::SliderFloat("Render Scale", &this->renderScale, 0.3f, 1.f);
-      // if (ImGui::IsItemDeactivatedAfterEdit()) {
-      if (ImGui::IsItemEdited()) {
-        make_draw_image(true);
-      }
-      ImGui::End();
-    }
-
-    if (ImGui::Begin("foreground")) {
-      if (ImGui::CollapsingHeader("Monkey Model",
-                                  ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::InputFloat3("LM", (float *)&monkey_model.location);
-        ImGui::SliderFloat3("RM", (float *)&monkey_model.rotation,
-                            -glm::radians(180.f), glm::radians(180.f));
-      }
-      if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
-        // ImGui::InputFloat3("LC", (float *)&view_settings.location);
-        // ImGui::SliderFloat3("RC", (float *)&view_settings.rotation,
-        // -glm::radians(180.f), glm::radians(180.f));
-        ImGui::Text("Speed", mainCamera->speed);
-        ImGui::SliderFloat("FOV", (float *)&fov_user, 0, 180.f);
-      }
-      ImGui::End();
     }
 
     ImGui::Render();
