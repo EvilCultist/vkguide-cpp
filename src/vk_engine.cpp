@@ -166,6 +166,17 @@ MaterialInstance GLTFMetallic_Roughness::write_material(
   return matData;
 }
 
+void GLTFMetallic_Roughness::clear_resources(VkDevice device) {
+  vkDestroyDescriptorSetLayout(device, materialLayout, nullptr);
+
+  // uncomment this once you add an actual transparentPipeline
+  vkDestroyPipelineLayout(device, this->opaquePipeline.layout, nullptr);
+  // vkDestroyPipelineLayout(device, this->transparentPipeline.layout, nullptr);
+
+  vkDestroyPipeline(device, this->opaquePipeline.pipeline, nullptr);
+  vkDestroyPipeline(device, this->transparentPipeline.pipeline, nullptr);
+}
+
 VulkanEngine *loadedEngine = nullptr;
 constexpr bool bUseValidationLayers = true;
 
@@ -595,7 +606,7 @@ void VulkanEngine::init_descriptors() {
     _frames[i]._frameDescriptors.init(_device, 200, frame_sizes);
 
     _mainDeletionQueue.push_function(
-        [&]() { _frames[i]._frameDescriptors.destroy_pools(_device); });
+        [&, i]() { _frames[i]._frameDescriptors.destroy_pools(_device); });
   }
 
   {
@@ -614,6 +625,10 @@ void VulkanEngine::init_descriptors() {
 
   _mainDeletionQueue.push_function([&]() {
     globalDescriptorAllocator.destroy_pools(_device);
+    vkDestroyDescriptorSetLayout(_device, _gpuSceneDataDescriptorLayout,
+                                 nullptr);
+    vkDestroyDescriptorSetLayout(_device, _singleImageDescriptorLayout,
+                                 nullptr);
     vkDestroyDescriptorSetLayout(_device, _drawImageDescriptorLayout, nullptr);
   });
 }
@@ -866,6 +881,9 @@ void VulkanEngine::init_default_data() {
 
     loadedNodes[m->name] = std::move(newNode);
   }
+
+  _mainDeletionQueue.push_function(
+      [&]() { metalRoughMaterial.clear_resources(_device); });
 }
 
 void VulkanEngine::immediate_submit(
